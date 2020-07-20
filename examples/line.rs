@@ -1,10 +1,7 @@
-use nalgebra as na;
 use nalgebra_glm as glm;
 use vectorfoil::{EdgeType, Primitive, Renderer};
 
 use glm::{vec2, vec3};
-
-type V3 = na::Vector3<f32>;
 
 fn main() {
     let view = glm::look_at(
@@ -15,7 +12,7 @@ fn main() {
     let proj = glm::ortho(-10.0, 10.0, -10.0, 10.0, 0.0, 10.0);
     let clip = proj * view;
 
-    let mut renderer = vectorfoil::Renderer::new(&clip).cull(true);
+    let mut renderer = Renderer::new(&clip).cull_face(true);
 
     renderer.add_prim(Primitive::Line {
         points: [vec3(-1.0, -1.0, 0.0), vec3(1.0, 1.0, 0.0)],

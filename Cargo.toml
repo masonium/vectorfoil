@@ -11,3 +11,6 @@ nalgebra = "*"
 nalgebra-glm = "*"
 ncollide2d = "*"
 art-util = { path = "/home/mason/workspace/art-util" }
+
+[dev-dependencies]
+assert_approx_eq = "*"

@@ -45,6 +45,26 @@ pub struct Renderer {
     depth_range: [f32; 2],
 }
 
+trait VDebug {
+    fn na_dbg(&self) -> String;
+}
+
+impl VDebug for Vec2 {
+    fn na_dbg(&self) -> String {
+	format!("[{:.4}, {:.4}]", self.x, self.y)
+    }
+}
+impl VDebug for Vec4 {
+    fn na_dbg(&self) -> String {
+	format!("[{:.4}, {:.4}, {:.4}]", self.x, self.y, self.z)
+    }
+}
+impl VDebug for Tri {
+    fn na_dbg(&self) -> String {
+	format!("[0:{}, 1:{}, 2:{}]", self.p[0].xy().na_dbg(), self.p[1].xy().na_dbg(), self.p[2].xy().na_dbg())
+    }
+}
+
 impl Renderer {
     pub fn new(c: &Matrix4<f32>) -> Renderer {
         Renderer {
@@ -171,7 +191,10 @@ impl Renderer {
                     // create an intersection
                     // go through every previously-rendered line
                     for l in &rp.lines {
-			println!("Testing {:?} against {:?} -> {:?}", tri, l.points[0], l.points[1]);
+			println!("Testing {} against {} -> {}", 
+				 tri.na_dbg(), 
+				 l.points[0].na_dbg(), 
+				 l.points[1].na_dbg());
                         // try to split the triangle on the line
                         if let SplitResult::Split(tris) =
                             split_triangle_by_segment(&tri, l.points[0], l.points[1])
@@ -179,7 +202,7 @@ impl Renderer {
                             println!("Splitting into {}:", tris.len());
 
                             for t in tris {
-				println!("    {:?}", t);
+				println!("    {}", t.na_dbg());
                                 prim_heap.push(Primitive::Triangle { tri: t }.into())
                             }
                             continue 'prim_loop;

@@ -1,6 +1,6 @@
 use crate::common::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeType {
     Visible,
     Invisible,
@@ -9,19 +9,59 @@ pub enum EdgeType {
     Culled,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tri {
+    pub p: [Vec4; 3],
+    pub e: [EdgeType; 3],
+}
+
 /// Internally, all primitive coordinates are kept in 4D as (x/w, y/w,
 /// z/w, w).
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Primitive {
     /// Triangle
-    Triangle {
-	points: [Vec4; 3],
-	edges: [EdgeType; 3],
-    },
+    Triangle { tri: Tri },
 
     /// Line segment
     Line { points: [Vec4; 2] },
 
     /// Single point
     Point { point: Vec4 },
+}
+
+impl Primitive {
+    pub fn centroid(&self) -> Vec3 {
+	match self {
+	    Self::Point { point } => point.xyz(),
+	    Self::Line { points } => (points[0] + points[1]).xyz() * 0.5,
+	    Self::Triangle { tri: Tri { p, .. } } => { p[0] + p[1] + p[2] }.xyz() / 3.0,
+	}
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZsortPrim {
+    pub p: Primitive,
+    z: f32,
+}
+
+impl From<Primitive> for ZsortPrim {
+    fn from(p: Primitive) -> Self {
+	let z = -p.centroid().z;
+	ZsortPrim { p, z }
+    }
+}
+
+impl Eq for ZsortPrim {}
+
+impl std::cmp::PartialOrd for ZsortPrim {
+    fn partial_cmp(&self, rhs: &Self) -> Option<std::cmp::Ordering> {
+	self.z.partial_cmp(&rhs.z)
+    }
+}
+
+impl std::cmp::Ord for ZsortPrim {
+    fn cmp(&self, rhs: &Self) -> std::cmp::Ordering {
+	self.partial_cmp(rhs).unwrap()
+    }
 }

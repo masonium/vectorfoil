@@ -8,7 +8,7 @@ use glm::TMat3;
 pub enum RayInt {
     Colinear,
     Parallel,
-    Intersection(f32, f32),
+    Intersection(f64, f64),
 }
 
 impl RayInt {
@@ -24,7 +24,7 @@ impl RayInt {
 
     /// Return the t1 value if this is an intersection.
     #[allow(unused)]
-    fn t1(&self) -> Option<f32> {
+    fn t1(&self) -> Option<f64> {
         if let Self::Intersection(a, _) = self {
             Some(*a)
         } else {
@@ -33,7 +33,7 @@ impl RayInt {
     }
 
     /// Return the t2 value if this is an intersection.
-    fn t2(&self) -> Option<f32> {
+    fn t2(&self) -> Option<f64> {
         if let Self::Intersection(_, b) = self {
             Some(*b)
         } else {
@@ -63,7 +63,7 @@ impl Not for RayInt {
 #[derive(Clone, Debug)]
 pub enum PointTriTest {
     /// The point is purely within the triangle.
-    Inside(Vec3),
+    Inside(DVec3),
 
     /// The point is on edge i
     On(usize),
@@ -73,14 +73,14 @@ pub enum PointTriTest {
 }
 
 /// Return true iff (p0, p1, p2) form a denegerate triangle.
-pub fn is_degen_tri(p0: Vec2, p1: Vec2, p2: Vec2) -> bool {
+pub fn is_degen_tri(p0: DVec2, p1: DVec2, p2: DVec2) -> bool {
     let p01 = p1 - p0;
     let p12 = p2 - p1;
     let signed_area = p01.x * p12.y - p01.y * p12.x;
     signed_area.abs() <= 1e-4 * (p01.norm() * p12.norm())
 }
 
-pub fn point_tri_comparison_test(p: Vec2, tri: &Tri) -> PointTriTest {
+pub fn point_tri_comparison_test(p: DVec2, tri: &Tri) -> PointTriTest {
     if let Some(v) = barycentric_coords(p, tri) {
         if inside_line_range(v.x) && inside_line_range(v.y) && inside_line_range(v.z) {
             PointTriTest::Inside(v)
@@ -101,8 +101,8 @@ pub fn point_tri_comparison_test(p: Vec2, tri: &Tri) -> PointTriTest {
     }
 }
 
-pub fn barycentric_coords(p: Vec2, tri: &Tri) -> Option<Vec3> {
-    let m: TMat3<f32> = TMat3::new(
+pub fn barycentric_coords(p: DVec2, tri: &Tri) -> Option<DVec3> {
+    let m: TMat3<f64> = TMat3::new(
         tri.p[0].x, tri.p[1].x, tri.p[2].x, tri.p[0].y, tri.p[1].y, tri.p[2].y, 1.0, 1.0, 1.0,
     );
     na::LU::new(m).solve(&vec3(p.x, p.y, 1.0))
@@ -112,11 +112,11 @@ pub fn barycentric_coords(p: Vec2, tri: &Tri) -> Option<Vec3> {
 /// by two points, assuming any finite t's are valid.
 ///
 /// z-values are ignored.
-pub fn implicit_ray_intersect_2d(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> RayInt {
+pub fn implicit_ray_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
     let da = a1 - a0;
     let db = b1 - b0;
 
-    let m: TMat2<f32> = TMat2::new(da.x, -db.x, da.y, -db.y);
+    let m: TMat2<f64> = TMat2::new(da.x, -db.x, da.y, -db.y);
 
     match m.try_inverse() {
         Some(inv) => {
@@ -138,8 +138,8 @@ pub fn implicit_ray_intersect_2d(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> RayI
 /// appropriate.
 ///
 /// z-values are ignored.
-// pub fn line_intersect_2d(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> RayInt {
-//     const EPS: f32 = 1e-4;
+// pub fn line_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
+//     const EPS: f64 = 1e-4;
 //     let isect = implicit_ray_intersect_2d(a0.xy(), a1.xy(), b0.xy(), b1.xy());
 //     match isect {
 // 	RayInt::Intersection(ta, tb) => {
@@ -155,12 +155,12 @@ pub fn implicit_ray_intersect_2d(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> RayI
 
 /// Check whether the value is with the open interval (0, 1) using
 /// some epsilon to decide the slack.
-fn inside_line_range(t: f32) -> bool {
-    const EPS: f32 = 1e-4;
+fn inside_line_range(t: f64) -> bool {
+    const EPS: f64 = 1e-4;
     (t >= EPS) && t <= (1.0 - EPS)
 }
-fn on_line_range(t: f32) -> bool {
-    const EPS: f32 = 1e-4;
+fn on_line_range(t: f64) -> bool {
+    const EPS: f64 = 1e-4;
     t.abs() < EPS || (1.0 - t).abs() < EPS
 }
 
@@ -186,7 +186,7 @@ impl<'a> From<Vec<Tri>> for SplitResult<'a> {
 ///
 /// It is assumed within this function that p0-p1 is 'on top' of
 /// `tri`. Triangles are not degenerate.
-pub fn split_triangle_by_segment(tri: &Tri, p0: Vec2, p1: Vec2) -> SplitResult {
+pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult {
     let i0 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[0].xy(), tri.p[1].xy());
     let i1 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[1].xy(), tri.p[2].xy());
     let i2 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[2].xy(), tri.p[0].xy());
@@ -249,7 +249,7 @@ pub fn split_triangle_by_segment(tri: &Tri, p0: Vec2, p1: Vec2) -> SplitResult {
 
 /// Assumes p{0, 1} are of the form (x/w, y/w, z/w, w) and computes
 /// the interpolation along p0 -> p1 such that w fits.
-fn perspective_lerp(t: f32, p0: Vec4, p1: Vec4) -> Vec4 {
+fn perspective_lerp(t: f64, p0: DVec4, p1: DVec4) -> DVec4 {
     let p = art_util::easing::lerp(t, p0.xyz(), p1.xyz());
     let w = p0.w * p1.w / art_util::easing::lerp(t, p1.w, p0.w); // note the reversal; w(0) = p0.w
     vec4(p.x, p.y, p.z, w)
@@ -323,7 +323,7 @@ mod test {
     pub fn test_cross() {
         const N: usize = 11;
         for t in 0..N {
-            let dt: f32 = t as f32 / (N + 1) as f32;
+            let dt: f64 = t as f64 / (N + 1) as f64;
             let dv = vec2(1.0, 1.0) * dt;
 
             let isect = line_intersect(
@@ -346,7 +346,7 @@ mod test {
     pub fn test_parallel() {
         const N: usize = 11;
         for t in 0..N {
-            let dt: f32 = t as f32 / (N + 1) as f32;
+            let dt: f64 = t as f64 / (N + 1) as f64;
             let dv = vec2(1.0, 1.0) * dt;
 
             let isect = line_intersect(

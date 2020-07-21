@@ -11,7 +11,7 @@ pub enum EdgeType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tri {
-    pub p: [Vec4; 3],
+    pub p: [DVec4; 3],
     pub e: [EdgeType; 3],
 }
 
@@ -23,14 +23,14 @@ pub enum Primitive {
     Triangle { tri: Tri },
 
     /// Line segment
-    Line { points: [Vec4; 2] },
+    Line { points: [DVec4; 2] },
 
     /// Single point
-    Point { point: Vec4 },
+    Point { point: DVec4 },
 }
 
 impl Primitive {
-    pub fn centroid(&self) -> Vec3 {
+    pub fn centroid(&self) -> DVec3 {
 	match self {
 	    Self::Point { point } => point.xyz(),
 	    Self::Line { points } => (points[0] + points[1]).xyz() * 0.5,
@@ -42,7 +42,7 @@ impl Primitive {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZsortPrim {
     pub p: Primitive,
-    z: f32,
+    z: f64,
 }
 
 impl From<Primitive> for ZsortPrim {

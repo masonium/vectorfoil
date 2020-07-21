@@ -9,12 +9,12 @@ use std::collections::binary_heap::BinaryHeap;
 /// Output line from the `Renderer`.
 #[derive(Debug, Clone, Copy)]
 pub struct RenderLine {
-    points: [Vec2; 2],
+    points: [DVec2; 2],
     edge: EdgeType,
 }
 
 impl RenderLine {
-    pub fn new(p0: &Vec2, p1: &Vec2, e: EdgeType) -> RenderLine {
+    pub fn new(p0: &DVec2, p1: &DVec2, e: EdgeType) -> RenderLine {
         RenderLine {
             points: [*p0, *p1],
             edge: e,
@@ -25,8 +25,8 @@ impl RenderLine {
 /// Rendering output from the `Renderer`.
 #[derive(Debug, Clone, Default)]
 pub struct RenderPaths {
-    pub points: Vec<Vec2>,
-    pub hidden_points: Vec<Vec2>,
+    pub points: Vec<DVec2>,
+    pub hidden_points: Vec<DVec2>,
 
     pub lines: Vec<RenderLine>,
 }
@@ -40,21 +40,21 @@ impl RenderPaths {
 }
 
 pub struct Renderer {
-    clip: Matrix4<f32>,
+    clip: Matrix4<f64>,
     input_primitives: Vec<Primitive>,
-    depth_range: [f32; 2],
+    depth_range: [f64; 2],
 }
 
 trait VDebug {
     fn na_dbg(&self) -> String;
 }
 
-impl VDebug for Vec2 {
+impl VDebug for DVec2 {
     fn na_dbg(&self) -> String {
 	format!("[{:.4}, {:.4}]", self.x, self.y)
     }
 }
-impl VDebug for Vec4 {
+impl VDebug for DVec4 {
     fn na_dbg(&self) -> String {
 	format!("[{:.4}, {:.4}, {:.4}]", self.x, self.y, self.z)
     }
@@ -66,7 +66,7 @@ impl VDebug for Tri {
 }
 
 impl Renderer {
-    pub fn new(c: &Matrix4<f32>) -> Renderer {
+    pub fn new(c: &Matrix4<f64>) -> Renderer {
         Renderer {
             clip: *c,
             input_primitives: vec![],
@@ -80,13 +80,13 @@ impl Renderer {
     }
 
     /// Add a point to the list, given the primitive.
-    pub fn add_point(&mut self, p: Vec3) {
+    pub fn add_point(&mut self, p: DVec3) {
         self.add_prim(Primitive::Point {
             point: p.push(1.0),
         });
     }
 
-    pub fn add_tri(&mut self, p0: &Vec3, p1: &Vec3, p2: &Vec3) {
+    pub fn add_tri(&mut self, p0: &DVec3, p1: &DVec3, p2: &DVec3) {
 	self.add_prim(Primitive::Triangle {
 	    tri: Tri { p: [p0.push(1.0), p1.push(1.0), p2.push(1.0)], e: [EdgeType::Visible; 3] }
 	});
@@ -111,9 +111,9 @@ impl Renderer {
     }
 
     /// Project a point into NDC.
-    fn proj(&self, p: &Vec4) -> Vec4 {
-        let r = self.clip * na::Vector4::new(p.x, p.y, p.z, 1.0);
-        Vec4::new(r.x / r.w, r.y / r.w, r.z / r.w, r.w)
+    fn proj(&self, p: &DVec4) -> DVec4 {
+        let r = self.clip * p;
+        vec4(r.x / r.w, r.y / r.w, r.z / r.w, r.w)
     }
 
     /// Return true if a (projected) primitve can be trivially clipped
@@ -129,7 +129,7 @@ impl Renderer {
     /// Return true iff the set of input `points` can be
     /// conservatively clipped because they are all on the wrong side
     /// of a single clipping plane.
-    fn points_clipped(&self, points: &[Vec4]) -> bool {
+    fn points_clipped(&self, points: &[DVec4]) -> bool {
         // Check against each of the 6 clipping planes. If the set of
         // is on the wrong side of any plane, the primitive
         points.iter().all(|v| v.x < -1.0)
@@ -166,14 +166,14 @@ impl Renderer {
                 // TODO: For now, points and lines are rendered unconditionally.
                 Primitive::Point { point } => {
                     let p = &point;
-                    rp.points.push(Vec2::new(p.x, p.y));
+                    rp.points.push(vec2(p.x, p.y));
                 }
                 Primitive::Line { points } => {
                     let p0 = &points[0];
                     let p1 = &points[1];
                     rp.lines.push(RenderLine::new(
-                        &Vec2::new(p0.x, p0.y),
-                        &Vec2::new(p1.x, p1.y),
+                        &vec2(p0.x, p0.y),
+                        &vec2(p1.x, p1.y),
                         EdgeType::Visible,
                     ));
                 }

@@ -133,25 +133,37 @@ pub fn implicit_ray_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> 
     }
 }
 
+/// Return true iff, in 2d, triangle `t1` is contained within
+/// `t2`. The boundary is considered within `t2`
+pub fn triangle_in_triangle_2d(t1: &Tri, t2: &Tri) -> bool {
+    // check  that every point in t1 is on or within t2
+    t1.p.iter().all(|p| {
+	match point_tri_comparison_test(p.xy(), t2) {
+	    PointTriTest::Inside(_) | PointTriTest::On(_) => true,
+	    _ => false
+	}
+    })
+}
+
 /// Return the intersection point along a and b if the lines
 /// intersect. Otherwise, return colinear or no intersection as
 /// appropriate.
 ///
 /// z-values are ignored.
-// pub fn line_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
-//     const EPS: f64 = 1e-4;
-//     let isect = implicit_ray_intersect_2d(a0.xy(), a1.xy(), b0.xy(), b1.xy());
-//     match isect {
-// 	RayInt::Intersection(ta, tb) => {
-//             if ta >= EPS && ta <= 1.0-EPS && tb >= EPS && tb <= 1.0-EPS {
-//                 RayInt::Intersection(ta, tb)
-//             } else {
-//                 RayInt::NoIntersect
-//             }
-// 	}
-// 	_ => isect
-//     }
-// }
+pub fn line_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
+    const EPS: f64 = 1e-4;
+    let isect = implicit_ray_intersect_2d(a0.xy(), a1.xy(), b0.xy(), b1.xy());
+    match isect {
+	RayInt::Intersection(ta, tb) => {
+            if ta >= EPS && ta <= 1.0-EPS && tb >= EPS && tb <= 1.0-EPS {
+                RayInt::Intersection(ta, tb)
+            } else {
+                RayInt::Parallel
+            }
+	}
+	_ => isect
+    }
+}
 
 /// Check whether the value is with the open interval (0, 1) using
 /// some epsilon to decide the slack.
@@ -326,7 +338,7 @@ mod test {
             let dt: f64 = t as f64 / (N + 1) as f64;
             let dv = vec2(1.0, 1.0) * dt;
 
-            let isect = line_intersect(
+            let isect = line_intersect_2d(
                 vec2(-1.0, -1.0) + dv,
                 vec2(1.0, 1.0) + dv,
                 vec2(-1.0, 1.0),
@@ -349,7 +361,7 @@ mod test {
             let dt: f64 = t as f64 / (N + 1) as f64;
             let dv = vec2(1.0, 1.0) * dt;
 
-            let isect = line_intersect(
+            let isect = line_intersect_2d(
                 vec2(-1.0, -1.0) + dv,
                 vec2(1.0, 1.0) + dv,
                 vec2(-1.0, -1.0),

@@ -1,43 +1,11 @@
 use na::Matrix4;
 
 use crate::common::*;
-use crate::intersect::{split_triangle_by_segment, SplitResult};
+use crate::intersect::{split_triangle_by_segment, triangle_in_triangle_2d, SplitResult};
 use crate::primitive::*;
+use crate::render_paths::RenderPaths;
 use std::collections::binary_heap::BinaryHeap;
 //use nalgebra_glm as glm;
-
-/// Output line from the `Renderer`.
-#[derive(Debug, Clone, Copy)]
-pub struct RenderLine {
-    points: [DVec2; 2],
-    edge: EdgeType,
-}
-
-impl RenderLine {
-    pub fn new(p0: &DVec2, p1: &DVec2, e: EdgeType) -> RenderLine {
-        RenderLine {
-            points: [*p0, *p1],
-            edge: e,
-        }
-    }
-}
-
-/// Rendering output from the `Renderer`.
-#[derive(Debug, Clone, Default)]
-pub struct RenderPaths {
-    pub points: Vec<DVec2>,
-    pub hidden_points: Vec<DVec2>,
-
-    pub lines: Vec<RenderLine>,
-}
-
-impl RenderPaths {
-    /// Return true iff there are no pieces to render, visible or
-    /// hidden.
-    pub fn is_empty(&self) -> bool {
-        self.points.is_empty() && self.hidden_points.is_empty() && self.lines.is_empty()
-    }
-}
 
 pub struct Renderer {
     clip: Matrix4<f64>,
@@ -116,20 +84,20 @@ impl Renderer {
         vec4(r.x / r.w, r.y / r.w, r.z / r.w, r.w)
     }
 
-    /// Return true if a (projected) primitve can be trivially clipped
+    /// Return true if a (projected) primitve can be trivially culled
     /// from the viewing frustum.
-    fn is_prim_clipped(&self, prim: &Primitive) -> bool {
+    fn is_prim_culled(&self, prim: &Primitive) -> bool {
         match prim {
-            Primitive::Point { point } => self.points_clipped(&[*point]),
-            Primitive::Line { points } => self.points_clipped(points),
-            Primitive::Triangle { tri: Tri { p, .. } } => self.points_clipped(p),
+            Primitive::Point { point } => self.points_culled(&[*point]),
+            Primitive::Line { points } => self.points_culled(points),
+            Primitive::Triangle { tri: Tri { p, .. } } => self.points_culled(p),
         }
     }
 
     /// Return true iff the set of input `points` can be
-    /// conservatively clipped because they are all on the wrong side
-    /// of a single clipping plane.
-    fn points_clipped(&self, points: &[DVec4]) -> bool {
+    /// conservatively culled because they are all on the wrong side
+    /// of a single frustum plane.
+    fn points_culled(&self, points: &[DVec4]) -> bool {
         // Check against each of the 6 clipping planes. If the set of
         // is on the wrong side of any plane, the primitive
         points.iter().all(|v| v.x < -1.0)
@@ -141,85 +109,88 @@ impl Renderer {
     }
 
     pub fn render(&self) -> RenderPaths {
-        let mut rp = RenderPaths::default();
-
-        // project the primitives
-        let projected: Vec<_> = self
+        let culled: Vec<_> = self
             .input_primitives
             .iter()
+	// project the primitives into clip space
             .map(|p| self.proj_prim(p))
+	// (conservatively) cull the primitives that are
+	// completely outside of the render region.
+            .filter(|p| !self.is_prim_culled(p))
             .collect();
 
-        let clipped: Vec<_> = projected
-            .into_iter()
-            .filter(|p| !self.is_prim_clipped(p))
-            .collect();
-
-        let mut prim_heap: BinaryHeap<ZsortPrim> = BinaryHeap::with_capacity(clipped.len());
-        clipped
+        let mut prim_heap: BinaryHeap<ZsortPrim> = culled
             .iter()
-            .for_each(|p| prim_heap.push(p.clone().into()));
+            .map(|p| p.clone().into())
+            .collect();
 
-        'prim_loop: while let Some(x) = prim_heap.pop() {
-            let prim = x.p;
+	// Tentatively rendered primitives (that might be later rejected.
+	let mut rendered_prims = vec![];
+
+        'prim_loop: while let Some(mut x) = prim_heap.pop() {
+            let prim = &mut x.p;
             match prim {
                 // TODO: For now, points and lines are rendered unconditionally.
-                Primitive::Point { point } => {
-                    let p = &point;
-                    rp.points.push(vec2(p.x, p.y));
+                Primitive::Point { .. } => {
+		    rendered_prims.push(x);
                 }
-                Primitive::Line { points } => {
-                    let p0 = &points[0];
-                    let p1 = &points[1];
-                    rp.lines.push(RenderLine::new(
-                        &vec2(p0.x, p0.y),
-                        &vec2(p1.x, p1.y),
-                        EdgeType::Visible,
-                    ));
+                Primitive::Line { .. } => {
+		    rendered_prims.push(x);
                 }
-                Primitive::Triangle { tri } => {
-                    let points_2d: Vec<_> = tri.p.iter().map(|p| p.xy()).collect();
-                    let n: usize = points_2d.len();
-
+                Primitive::Triangle { ref mut tri } => {
                     // Remove denegerate and counter-clockwise triangles
-                    let p01 = points_2d[1] - points_2d[0];
-                    let p12 = points_2d[2] - points_2d[1];
+                    let p01 = tri.p[1].xy() - tri.p[0].xy();
+                    let p12 = tri.p[2].xy() - tri.p[1].xy();
                     if (p01.x * p12.y - p01.y * p12.x) <= 1e-4 * p01.norm() * p12.norm() {
                         continue;
                     }
 
-                    // create an intersection
-                    // go through every previously-rendered line
-                    for l in &rp.lines {
-			println!("Testing {} against {} -> {}", 
-				 tri.na_dbg(), 
-				 l.points[0].na_dbg(), 
-				 l.points[1].na_dbg());
-                        // try to split the triangle on the line
-                        if let SplitResult::Split(tris) =
-                            split_triangle_by_segment(&tri, l.points[0], l.points[1])
-                        {
-                            println!("Splitting into {}:", tris.len());
+                    // Go through every previously-rendered triangle, and try to intersect it with
+		    // every line segment (implied from previous triangles).
+                    for zp in &rendered_prims {
+			if let Primitive::Triangle { tri: test_tri } = &zp.p {
+			    // ignore hidden triangles
+			    if test_tri.is_hidden() {
+				continue;
+			    }
+			    for i in 0..3 {
 
-                            for t in tris {
-				println!("    {}", t.na_dbg());
-                                prim_heap.push(Primitive::Triangle { tri: t }.into())
-                            }
-                            continue 'prim_loop;
-                        }
-                    }
+				println!("Testing triangle {} against ({} {}):",
+					 tri.na_dbg(), 
+					 test_tri.p[i].xy().na_dbg(), 
+					 test_tri.p[(i+1)%3].xy().na_dbg());
+				
+				// try to split the triangle on the line
+				if let SplitResult::Split(tris) =
+				    split_triangle_by_segment(&tri, test_tri.p[i].xy(), test_tri.p[(i+1)%3].xy())
+				{
+				     println!("Splitting into {}:", tris.len());
 
-                    // split the triangle
+				    for t in tris {
+					println!("    {}", t.na_dbg());
+					prim_heap.push(Primitive::Triangle { tri: t }.into())
+				    }
+				    continue 'prim_loop;
+				}
+			    }
 
-                    for i in 0..n {
-                        let p0 = vec2(points_2d[i].x, points_2d[i].y);
-                        let p1 = vec2(points_2d[(i + 1) % n].x, points_2d[(i + 1) % n].y);
+			    // Check if the new triangle is contained
+			    // within the current triangle.
+			    if triangle_in_triangle_2d(&tri, &test_tri) {
+				// For now, we assume that the new tri is behind.
+				tri.hide(); 
+			    }
 
-                        rp.lines.push(RenderLine::new(&p0, &p1, tri.e[i]));
-                    }
+			}
+		    }
+
+		    // Here, we can tentatively render the
+		    // primitive. (We might reject it later.)
+		    rendered_prims.push(x);
                 }
-            }
+	    }
         }
-        rp
+
+        rendered_prims.iter().collect()
     }
 }

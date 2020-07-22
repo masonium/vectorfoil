@@ -11,6 +11,12 @@ nalgebra = "*"
 nalgebra-glm = "*"
 ncollide2d = "*"
 art-util = { path = "/home/mason/workspace/art-util" }
+svg = "*"
 
 [dev-dependencies]
 assert_approx_eq = "*"
+criterion = "*"
+
+[[bench]]
+name = "basic"
+harness = false

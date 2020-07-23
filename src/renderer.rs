@@ -49,15 +49,44 @@ impl Renderer {
 
     /// Add a point to the list, given the primitive.
     pub fn add_point(&mut self, p: DVec3) {
-        self.add_prim(Primitive::Point {
-            point: p.push(1.0),
+        self.add_prim(Primitive::Point { point: p.push(1.0) });
+    }
+
+    /// Add a triangle to the renderer, with all visible edges.
+    pub fn add_triangle(&mut self, p0: &DVec3, p1: &DVec3, p2: &DVec3) {
+        self.add_prim(Primitive::Triangle {
+            tri: Tri {
+                p: [p0.push(1.0), p1.push(1.0), p2.push(1.0)],
+                e: [EdgeType::Visible; 3],
+            },
         });
     }
 
-    pub fn add_tri(&mut self, p0: &DVec3, p1: &DVec3, p2: &DVec3) {
-	self.add_prim(Primitive::Triangle {
-	    tri: Tri { p: [p0.push(1.0), p1.push(1.0), p2.push(1.0)], e: [EdgeType::Visible; 3] }
-	});
+    /// Add a polygon to the list, with all outside edges visible.
+    ///
+    /// # Remarks
+    ///
+    /// Polygons are internally translated into a triangles as a
+    /// triangle fan. The inner edges are marked as Invisible.
+    pub fn add_polygon(&mut self, p: &[DVec3]) {
+        for i in 0..p.len() - 2 {
+            let e0 = if i == 0 {
+                EdgeType::Visible
+            } else {
+                EdgeType::Invisible
+            };
+            let e2 = if i == p.len() - 3 {
+                EdgeType::Visible
+            } else {
+                EdgeType::Invisible
+            };
+            self.add_prim(Primitive::Triangle {
+                tri: Tri {
+                    p: [p[0].push(1.0), p[i + 1].push(1.0), p[i + 2].push(1.0)],
+                    e: [e0, EdgeType::Visible, e2],
+                },
+            });
+        }
     }
 
     /// Project the primitive as a whole.

@@ -1,3 +1,8 @@
+//! General geometric methods.
+//!
+//! Any methods ending in `_2d` ignore the .z and .w values of their
+//! arguments entirely, if present.
+
 use crate::common::*;
 use crate::primitive::{EdgeType, Tri};
 use std::ops::Not;
@@ -77,14 +82,14 @@ pub fn is_degen_tri(p0: DVec2, p1: DVec2, p2: DVec2) -> bool {
     let p01 = p1 - p0;
     let p12 = p2 - p1;
     let signed_area = p01.x * p12.y - p01.y * p12.x;
-    signed_area.abs() <= 1e-4 * (p01.norm() * p12.norm())
+    signed_area.abs() <= EPS * (p01.norm() * p12.norm())
 }
 
 pub fn point_tri_comparison_test(p: DVec2, tri: &Tri) -> PointTriTest {
     if let Some(v) = barycentric_coords(p, tri) {
         if inside_line_range(v.x) && inside_line_range(v.y) && inside_line_range(v.z) {
             PointTriTest::Inside(v)
-        } else if v.x < 0.0 || v.y < 0.0 || v.z < 0.0 {
+        } else if v.x < -EPS || v.y < -EPS || v.z < -EPS {
             PointTriTest::Outside
         } else if on_line_range(v.x) {
             PointTriTest::On(1)
@@ -101,6 +106,11 @@ pub fn point_tri_comparison_test(p: DVec2, tri: &Tri) -> PointTriTest {
     }
 }
 
+/// Calculate the barycentric coordinates of the point `p` with the triangle `tri`.
+///
+/// If the return value exists, the sum of the elemnts will be 1.0. If
+/// the triangle is sufficiently degenerate, no solution will be
+/// returned.
 pub fn barycentric_coords(p: DVec2, tri: &Tri) -> Option<DVec3> {
     let m: TMat3<f64> = TMat3::new(
         tri.p[0].x, tri.p[1].x, tri.p[2].x, tri.p[0].y, tri.p[1].y, tri.p[2].y, 1.0, 1.0, 1.0,
@@ -110,25 +120,25 @@ pub fn barycentric_coords(p: DVec2, tri: &Tri) -> Option<DVec3> {
 
 /// Return the intersection point of two rays, each implicitly defined
 /// by two points, assuming any finite t's are valid.
-///
-/// z-values are ignored.
 pub fn implicit_ray_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
     let da = a1 - a0;
     let db = b1 - b0;
 
-    let m: TMat2<f64> = TMat2::new(da.x, -db.x, da.y, -db.y);
+    // The matrix inversion can work even in cases that we would call
+    // degenerate, so it's important to check for degenerate cases first.
 
-    match m.try_inverse() {
-        Some(inv) => {
-            let t = inv * (b0 - a0).xy();
-            RayInt::Intersection(t.x, t.y)
-        }
-        None => {
-            if is_degen_tri(a0, a1, b0) {
-                RayInt::Colinear
-            } else {
-                RayInt::Parallel
+    if is_degen_tri(a0, a1, b0) && is_degen_tri(a0, a1, b1) {
+        RayInt::Colinear
+    } else if is_degen_tri(vec2(0.0, 0.0), da, db) {
+	RayInt::Parallel
+    } else {
+        let m: TMat2<f64> = TMat2::new(da.x, -db.x, da.y, -db.y);
+        match m.try_inverse() {
+            Some(inv) => {
+                let t = inv * (b0 - a0).xy();
+                RayInt::Intersection(t.x, t.y)
             }
+            None => RayInt::Parallel,
         }
     }
 }
@@ -150,7 +160,6 @@ pub fn triangle_in_triangle_2d(t1: &Tri, t2: &Tri) -> bool {
 ///
 /// z-values are ignored.
 pub fn line_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
-    const EPS: f64 = 1e-4;
     let isect = implicit_ray_intersect_2d(a0.xy(), a1.xy(), b0.xy(), b1.xy());
     match isect {
         RayInt::Intersection(ta, tb) => {
@@ -167,14 +176,15 @@ pub fn line_intersect_2d(a0: DVec2, a1: DVec2, b0: DVec2, b1: DVec2) -> RayInt {
 /// Check whether the value is with the open interval (0, 1) using
 /// some epsilon to decide the slack.
 fn inside_line_range(t: f64) -> bool {
-    const EPS: f64 = 1e-4;
     (t >= EPS) && t <= (1.0 - EPS)
 }
 fn on_line_range(t: f64) -> bool {
-    const EPS: f64 = 1e-4;
     t.abs() < EPS || (1.0 - t).abs() < EPS
 }
 
+/// The possibly outcomes of a splitting a triangle by a segment.
+/// See `split_triangle_by_segment`.
+#[derive(Debug)]
 pub enum SplitResult<'a> {
     Original(&'a Tri),
     Split(Vec<Tri>),
@@ -196,7 +206,7 @@ impl<'a> From<Vec<Tri>> for SplitResult<'a> {
 /// # Remarks.
 ///
 /// It is assumed within this function that p0-p1 is 'on top' of
-/// `tri`. Triangles are not degenerate.
+/// `tri`. Degenerate triangles will yield unknown results.
 pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult {
     let i0 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[0].xy(), tri.p[1].xy());
     let i1 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[1].xy(), tri.p[2].xy());
@@ -270,9 +280,9 @@ fn perspective_lerp(t: f64, p0: DVec4, p1: DVec4) -> DVec4 {
 /// edge i.
 fn split_triangle_aux(tri: &Tri, e: usize, isects: &[RayInt]) -> Vec<Tri> {
     // find the interpolate point on the edge.
-    let p = perspective_lerp(isects[e].t2().unwrap(), tri.p[e], tri.p[(e + 1) % 3]);
     let e1 = (e + 1) % 3;
     let e2 = (e + 2) % 3;
+    let p = perspective_lerp(isects[e].t2().unwrap(), tri.p[e], tri.p[e1]);
 
     //
     if let Some(t2) = isects[e1].t2() {
@@ -295,21 +305,23 @@ fn split_triangle_aux(tri: &Tri, e: usize, isects: &[RayInt]) -> Vec<Tri> {
         }
     }
     if let Some(t2) = isects[e2].t2() {
-        let q = perspective_lerp(t2, tri.p[e2], tri.p[e]);
-        vec![
-            Tri {
-                p: [p, tri.p[e1], tri.p[e2]],
-                e: [tri.e[e], tri.e[e1], EdgeType::Split],
-            },
-            Tri {
-                p: [p, tri.p[e2], q],
-                e: [EdgeType::Split, tri.e[e2], EdgeType::Split],
-            },
-            Tri {
-                p: [p, q, tri.p[e]],
-                e: [EdgeType::Split, tri.e[e2], tri.e[e]],
-            },
-        ];
+        if inside_line_range(t2) {
+            let q = perspective_lerp(t2, tri.p[e2], tri.p[e]);
+            return vec![
+                Tri {
+                    p: [p, tri.p[e1], tri.p[e2]],
+                    e: [tri.e[e], tri.e[e1], EdgeType::Split],
+                },
+                Tri {
+                    p: [p, tri.p[e2], q],
+                    e: [EdgeType::Split, tri.e[e2], EdgeType::Split],
+                },
+                Tri {
+                    p: [p, q, tri.p[e]],
+                    e: [EdgeType::Split, tri.e[e2], tri.e[e]],
+                },
+            ];
+        }
     }
 
     // otherwise, we're hitting the opposite point
@@ -354,11 +366,29 @@ mod test {
     }
 
     #[test]
-    pub fn test_parallel() {
+    pub fn test_colinear() {
         const N: usize = 11;
         for t in 0..N {
             let dt: f64 = t as f64 / (N + 1) as f64;
             let dv = vec2(1.0, 1.0) * dt;
+
+            let isect = line_intersect_2d(
+                vec2(-1.0, -1.0) + dv,
+                vec2(1.0, 1.0) + dv,
+                vec2(-1.0, -1.0),
+                vec2(1.0, 1.0),
+            );
+
+            assert_eq!(isect, RayInt::Colinear);
+        }
+    }
+
+    #[test]
+    pub fn test_parallel() {
+        const N: usize = 11;
+        for t in 1..N {
+            let dt: f64 = t as f64 / (N + 1) as f64;
+            let dv = vec2(-1.0, 1.0) * dt;
 
             let isect = line_intersect_2d(
                 vec2(-1.0, -1.0) + dv,

@@ -103,3 +103,38 @@ impl<'a> std::iter::FromIterator<&'a ZsortPrim> for RenderPaths {
         rp
     }
 }
+
+pub fn standalone_svg(
+    rp: &RenderPaths,
+    width: f64,
+    height: f64,
+    dpi: impl Into<Option<f64>>,
+) -> svg::Document {
+    let dpi = dpi.into().unwrap_or(72.0);
+    let mut d = svg::Document::new()
+        .set("width", format!("{}", width * dpi))
+        .set("height", format!("{}", height * dpi))
+        .add(svg::node::element::Style::new(
+            ".visible { stroke-width: 0.005; fill: none; stroke: #444444; }
+.hidden { stroke-width: 0.002; fill: none; stroke: #2222cc; stroke-dasharray: 0.01 0.005; }
+.invisible { stroke-width: 0.001; fill: none; stroke: #aaaaaa; stroke-dasharray: 0.001 0.001; }
+.split { stroke-width: 0.001; fill: none; stroke: #22cc22; stroke-dasharray: 0.002 0.002; }
+.culled { stroke-width: 0.001; fill: none; stroke: #cc2222; stroke-dasharray: 0.005 0.005; }",
+        ));
+
+    let mut g = svg::node::element::Group::new().set(
+        "transform",
+        format!(
+            "translate({} {}) scale({} -{})",
+            width * dpi / 2.0,
+            height * dpi / 2.0,
+            width * dpi / 2.0,
+            height * dpi / 2.0
+        ),
+    );
+
+    g = g.add(rp.as_svg());
+    d = d.add(g);
+
+    d
+}

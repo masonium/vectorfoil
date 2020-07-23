@@ -1,59 +1,31 @@
-use glm::{look_at, perspective, vec3};
+use glm::{vec2, vec4};
 use nalgebra_glm as glm;
-use svg::Document;
-use vectorfoil::Renderer;
+use vectorfoil::{split_triangle_by_segment, EdgeType, Tri};
 
 fn main() {
-    let dpi = 72.0;
-    let width = 10.0;
-    let height = 7.0;
-    let mut d = svg::Document::new()
-        .set("width", format!("{}", width * dpi))
-        .set("height", format!("{}", height * dpi))
-        .add(svg::node::element::Style::new(
-            ".visible { stroke-width: 0.01; fill: none; stroke: #444444; }
-.hidden { stroke-width: 0.001; fill: none; stroke: #2222cc; stroke-dasharray: 0.001 0.001; }
-.invisible { stroke-width: 0.001; fill: none; stroke: #888888; stroke-dasharray: 0.002 002; }
-.split { stroke-width: 0.001; fill: none; stroke: #888888; stroke-dasharray: 0.005 0.005; }
-.culled { stroke-width: 0.001; fill: none; stroke: #cc2222; stroke-dasharray: 0.005 0.005; }",
-        ));
+    let v = [
+	vec4(0.1888026940, -0.0181302809, 0.0, 1.0),
+	vec4(-0.0983901363, 0.3401342839, 0.0, 1.0),
+	vec4(-0.0802953986, -0.0308423169, 0.0, 1.0),
+    ];
+    let p0 = vec2(0.1580475040, 0.0202359093);
+    let p1 = vec2(0.1888026940, -0.0181302809);
 
-    let view = look_at(
-        &vec3(0.0, 0.0, 4.0),
-        &vec3(0.0, 0.0, 0.0),
-        &vec3(0.0, 1.0, 0.0),
-    );
-    let proj = perspective(width / height, std::f64::consts::FRAC_PI_2, 1.0, 9.0);
-    let mut renderer = Renderer::new(&(proj * view));
+    let tri = Tri {
+	p: v,
+	e: [EdgeType::Visible; 3],
+    };
+    split_triangle_by_segment(&tri, p0, p1);
 
-    renderer.add_triangle(
-        &vec3(-1.0, -1.0, 1.0),
-        &vec3(0.5, 0.0, 1.0),
-        &vec3(-1.0, 1.0, 1.0),
-    );
-    renderer.add_triangle(
-        &vec3(-0.5, 0.0, -1.0),
-        &vec3(1.0, -1.0, -1.0),
-        &vec3(1.0, 1.0, -1.0),
-    );
+    // let v1 = [vec4(0.1888026940, -0.0181302809, 0.0, 1.0),
+    //        vec4(0.1958607387, 0.0438854463, 0.0, 1.0),
+    //        vec4(0.1425652996, 0.0395495016, 0.0, 1.0)];
+    // let v2 = [vec4(0.1995914194, 0.0766651878, 0.0, 1.0),
+    //        vec4(-0.3326523656, -0.2697478830, 0.0, 1.0),
+    //        vec4(0.1369745035, -0.4735202776, 0.0, 1.0)];
 
-    let mut g = svg::node::element::Group::new().set(
-        "transform",
-        format!(
-            "translate({} {}) scale({} -{})",
-            width * dpi / 2.0,
-            height * dpi / 2.0,
-            width * dpi / 2.0,
-            height * dpi / 2.0
-        ),
-    );
+    // let tri1 = Tri {p: v1, e: [EdgeType::Visible; 3]};
+    // let tri2 = Tri {p: v2, e: [EdgeType::Visible; 3]};
 
-    let r = renderer.render();
-
-    println!("{:?}", r);
-
-    g = g.add(r.as_svg());
-    d = d.add(g);
-
-    svg::save("x.svg", &d);
+    // triangle_in_triangle_2d(&tri1, &tri2);
 }

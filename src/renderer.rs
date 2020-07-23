@@ -4,6 +4,7 @@ use crate::common::*;
 use crate::intersect::{split_triangle_by_segment, triangle_in_triangle_2d, SplitResult};
 use crate::primitive::*;
 use crate::render_paths::RenderPaths;
+use itertools::Itertools;
 use std::collections::binary_heap::BinaryHeap;
 //use nalgebra_glm as glm;
 
@@ -19,18 +20,18 @@ trait VDebug {
 
 impl VDebug for DVec2 {
     fn na_dbg(&self) -> String {
-        format!("[{:.4}, {:.4}]", self.x, self.y)
+        format!("vec2({:.10}, {:.10})", self.x, self.y)
     }
 }
 impl VDebug for DVec4 {
     fn na_dbg(&self) -> String {
-        format!("[{:.4}, {:.4}, {:.4}]", self.x, self.y, self.z)
+        format!("[{:.10}, {:.10}, {:.10}]", self.x, self.y, self.z)
     }
 }
 impl VDebug for Tri {
     fn na_dbg(&self) -> String {
         format!(
-            "[0:{}, 1:{}, 2:{}]",
+            "[vec4({}), vec4({}), vec4({})]",
             self.p[0].xy().na_dbg(),
             self.p[1].xy().na_dbg(),
             self.p[2].xy().na_dbg()
@@ -57,8 +58,12 @@ impl Renderer {
         self.add_prim(Primitive::Point { point: p.push(1.0) });
     }
 
+    pub fn add_line(&mut self, p0: DVec3, p1: DVec3) {
+        self.add_prim(Primitive::Line { points: [p0.push(1.0), p1.push(1.0)] });
+    }
+
     /// Add a triangle to the renderer, with all visible edges.
-    pub fn add_triangle(&mut self, p0: &DVec3, p1: &DVec3, p2: &DVec3) {
+    pub fn add_triangle(&mut self, p0: DVec3, p1: DVec3, p2: DVec3) {
         self.add_prim(Primitive::Triangle {
             tri: Tri {
                 p: [p0.push(1.0), p1.push(1.0), p2.push(1.0)],
@@ -151,6 +156,21 @@ impl Renderer {
             // (conservatively) cull the primitives that are
             // completely outside of the render region.
             .filter(|p| !self.is_prim_culled(p))
+            .filter_map(|p| {
+                if let Primitive::Triangle { mut tri } = p.clone() {
+                    let winding = tri.winding_2d();
+                    match winding {
+                        Winding::Clockwise => {
+                            tri.reverse();
+                            Some(Primitive::Triangle { tri })
+                        }
+                        Winding::Degenerate => None,
+                        _ => Some(p),
+                    }
+                } else {
+                    Some(p)
+                }
+            })
             .collect();
 
         let mut prim_heap: BinaryHeap<ZsortPrim> =
@@ -159,8 +179,21 @@ impl Renderer {
         // Tentatively rendered primitives (that might be later rejected.
         let mut rendered_prims = vec![];
 
+        let mut iter = 0;
+        render_partial(
+            None,
+            &rendered_prims,
+            &prim_heap,
+            None,
+            None,
+            &mut iter,
+            false,
+        );
+
         'prim_loop: while let Some(mut x) = prim_heap.pop() {
-            let prim = &mut x.p;
+            let prim = &x.p;
+            let mut hidden = false;
+            let mut added = false;
             match prim {
                 // TODO: For now, points and lines are rendered unconditionally.
                 Primitive::Point { .. } => {
@@ -169,41 +202,69 @@ impl Renderer {
                 Primitive::Line { .. } => {
                     rendered_prims.push(x);
                 }
-                Primitive::Triangle { ref mut tri } => {
-                    // Remove denegerate and counter-clockwise triangles
-                    let p01 = tri.p[1].xy() - tri.p[0].xy();
-                    let p12 = tri.p[2].xy() - tri.p[1].xy();
-                    if (p01.x * p12.y - p01.y * p12.x) <= 1e-4 * p01.norm() * p12.norm() {
+                Primitive::Triangle { ref tri } => {
+                    if tri.winding_2d() == Winding::Degenerate {
                         continue;
                     }
 
+                    render_partial(
+                        &*tri,
+                        &rendered_prims,
+                        &prim_heap,
+                        None,
+                        None,
+                        &mut iter,
+                        false,
+                    );
+
                     // Go through every previously-rendered triangle, and try to intersect it with
                     // every line segment (implied from previous triangles).
-                    for zp in &rendered_prims {
+                    for (izp, zp) in rendered_prims.iter().enumerate() {
                         if let Primitive::Triangle { tri: test_tri } = &zp.p {
                             // ignore hidden triangles
                             if test_tri.is_hidden() {
                                 continue;
                             }
+
                             for i in 0..3 {
+                                if x.already_checked(izp, i) {
+                                    println!("{} skipping ({} {})", iter, izp, i);
+                                    continue;
+                                }
+
+                                let pa = test_tri.p[i].xy();
+                                let pb = test_tri.p[(i + 1) % 3].xy();
                                 println!(
-                                    "Testing triangle {} against ({} {}):",
+                                    "{} Testing triangle {} against ({} {}):",
+                                    iter,
                                     tri.na_dbg(),
-                                    test_tri.p[i].xy().na_dbg(),
-                                    test_tri.p[(i + 1) % 3].xy().na_dbg()
+                                    pa.na_dbg(),
+                                    pb.na_dbg()
                                 );
 
                                 // try to split the triangle on the line
-                                if let SplitResult::Split(tris) = split_triangle_by_segment(
-                                    &tri,
-                                    test_tri.p[i].xy(),
-                                    test_tri.p[(i + 1) % 3].xy(),
-                                ) {
-                                    println!("Splitting into {}:", tris.len());
+                                if let SplitResult::Split(tris) =
+                                    split_triangle_by_segment(&tri, pa, pb)
+                                {
+                                    println!("{} Splitting into {}:", iter, tris.len());
+                                    render_partial(
+                                        None,
+                                        &rendered_prims,
+                                        &prim_heap,
+                                        (&tris, (pa, pb)),
+                                        None,
+                                        &mut iter,
+                                        added,
+                                    );
 
+                                    let mut new_hs = x.presplit.clone();
+                                    new_hs.insert((izp, i));
                                     for t in tris {
-                                        println!("    {}", t.na_dbg());
-                                        prim_heap.push(Primitive::Triangle { tri: t }.into())
+                                        println!("{}    {}", iter, t.na_dbg());
+                                        prim_heap.push(ZsortPrim::new(
+                                            Primitive::Triangle { tri: t },
+                                            &new_hs,
+                                        ));
                                     }
                                     continue 'prim_loop;
                                 }
@@ -211,20 +272,189 @@ impl Renderer {
 
                             // Check if the new triangle is contained
                             // within the current triangle.
+                            println!(
+                                "{} Testing triangle {} inside {}",
+                                iter,
+                                tri.na_dbg(),
+                                test_tri.na_dbg()
+                            );
                             if triangle_in_triangle_2d(&tri, &test_tri) {
                                 // For now, we assume that the new tri is behind.
-                                tri.hide();
+                                println!(
+                                    "{} Hiding triangle {} inside {}",
+                                    iter,
+                                    tri.na_dbg(),
+                                    test_tri.na_dbg()
+                                );
+                                hidden = true;
+                                render_partial(
+                                    None,
+                                    &rendered_prims,
+                                    &prim_heap,
+                                    None,
+                                    &*tri,
+                                    &mut iter,
+                                    added,
+                                );
+                                break;
                             }
                         }
+                    }
+
+                    if hidden {
+                        x.p.hide();
                     }
 
                     // Here, we can tentatively render the
                     // primitive. (We might reject it later.)
                     rendered_prims.push(x);
+                    added = true;
                 }
             }
+
+            render_partial(
+                None,
+                &rendered_prims,
+                &prim_heap,
+                None,
+                None,
+                &mut iter,
+                added,
+            );
         }
 
         rendered_prims.iter().collect()
     }
+}
+
+fn render_partial<'a, 'b, 'c>(
+    next: impl Into<Option<&'b Tri>>,
+    rendered: &Vec<ZsortPrim>,
+    heap: &BinaryHeap<ZsortPrim>,
+    split: impl Into<Option<(&'c Vec<Tri>, (DVec2, DVec2))>>,
+    hidden: impl Into<Option<&'a Tri>>,
+    iter: &mut usize,
+    added: bool,
+) {
+    // add the all of the triangles, highlighting the current one.
+    let dpi = 72.0;
+    let width = 10.0;
+    let height = 10.0;
+    let mut d = svg::Document::new()
+        .set("width", format!("{}", width * dpi))
+        .set("height", format!("{}", height * dpi))
+        .add(svg::node::element::Style::new(
+            ".rendered { stroke-width: 0.005; fill: none; stroke: #444444; }
+.latest { stroke-width: 0.005; fill: #00cc00; opacity: 0.5; stroke: #444444; }
+.next { stroke-width: 0.002; fill: #0000cc; opacity: 0.5; stroke: #00cc00 ; }
+.split { stroke-width: 0.002; fill: #cc0000; opacity: 0.5; stroke: #666666 ; }
+.hidden { stroke-width: 0.002; fill: #000000; opacity: 0.5; stroke: #666666; }
+.ready { stroke-width: 0.002; fill: none; stroke: #999999; stroke-dasharray: 0.01 0.01; }
+.split { stroke-width: 0.002; fill: none; stroke: #000000; },
+.split_line { stroke-width: 0.02; stroke: #000000; stroke-dasharray: 0.004 0.004 }",
+        ));
+
+    let mut g = svg::node::element::Group::new().set(
+        "transform",
+        format!(
+            "translate({} {}) scale({} -{})",
+            width * dpi / 2.0,
+            height * dpi / 2.0,
+            width * dpi / 2.0,
+            height * dpi / 2.0
+        ),
+    );
+
+    d = d.add(
+        svg::node::element::Rectangle::new()
+            .set("width", width * dpi)
+            .set("height", height * dpi)
+            .set("style", "fill: #ffffff"),
+    );
+
+    let add_prim = |tri: &Tri, class: &str, g: svg::node::element::Group| {
+        g.add(
+            svg::node::element::Polygon::new()
+                .set(
+                    "points",
+                    tri.p.iter().map(|p| format!("{},{}", p[0], p[1])).join(" "),
+                )
+                .set("class", class),
+        )
+    };
+    let add_color_prim = |tri: &Tri, class: &str, color: &str, g: svg::node::element::Group| {
+        g.add(
+            svg::node::element::Polygon::new()
+                .set(
+                    "points",
+                    tri.p.iter().map(|p| format!("{},{}", p[0], p[1])).join(" "),
+                )
+                .set("class", class)
+                .set("style", format!("fill: {};", color)),
+        )
+    };
+    let add_line = |p0: &DVec2, p1: &DVec2, g: svg::node::element::Group| {
+        g.add(
+            svg::node::element::Polyline::new()
+                .set("points", format!("{},{} {},{}", p0.x, p0.y, p1.x, p1.y))
+                .set("class", "split_line"),
+        )
+    };
+
+    for (i, zprim) in rendered.iter().enumerate() {
+        match zprim.p {
+            Primitive::Triangle { ref tri } => {
+                g = add_prim(
+                    tri,
+                    if tri.is_hidden() {
+                        "hidden"
+                    } else if added && i == rendered.len() - 1 {
+                        "latest"
+                    } else {
+                        "rendered"
+                    },
+                    g,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    for zprim in heap.iter() {
+        match zprim.p {
+            Primitive::Triangle { ref tri } => {
+                g = add_prim(tri, "ready", g);
+            }
+            _ => {}
+        }
+    }
+
+    for tri in hidden.into().iter() {
+        g = add_prim(tri, "hidden", g)
+    }
+    for tri in next.into().iter() {
+        g = add_prim(tri, "next", g)
+    }
+
+    let colors3 = ["#ff0000", "#bb0000", "#880000"];
+    let colors2 = ["#ff00ff", "#bb00bb"];
+
+    if let Some((split_tris, split_line)) = split.into() {
+        if split_tris.len() == 3 {
+            for (tri, color) in split_tris.iter().zip(colors3.iter()) {
+                g = add_color_prim(tri, "split", color, g)
+            }
+        } else {
+            for (tri, color) in split_tris.iter().zip(colors2.iter()) {
+                g = add_color_prim(tri, "split", color, g)
+            }
+        }
+
+        g = add_line(&split_line.0, &split_line.1, g);
+    }
+
+    d = d.add(g);
+
+    svg::save(format!("x{:06}.svg", iter), &d).ok();
+    *iter += 1;
 }

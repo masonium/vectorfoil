@@ -19,17 +19,22 @@ trait VDebug {
 
 impl VDebug for DVec2 {
     fn na_dbg(&self) -> String {
-	format!("[{:.4}, {:.4}]", self.x, self.y)
+        format!("[{:.4}, {:.4}]", self.x, self.y)
     }
 }
 impl VDebug for DVec4 {
     fn na_dbg(&self) -> String {
-	format!("[{:.4}, {:.4}, {:.4}]", self.x, self.y, self.z)
+        format!("[{:.4}, {:.4}, {:.4}]", self.x, self.y, self.z)
     }
 }
 impl VDebug for Tri {
     fn na_dbg(&self) -> String {
-	format!("[0:{}, 1:{}, 2:{}]", self.p[0].xy().na_dbg(), self.p[1].xy().na_dbg(), self.p[2].xy().na_dbg())
+        format!(
+            "[0:{}, 1:{}, 2:{}]",
+            self.p[0].xy().na_dbg(),
+            self.p[1].xy().na_dbg(),
+            self.p[2].xy().na_dbg()
+        )
     }
 }
 
@@ -141,30 +146,28 @@ impl Renderer {
         let culled: Vec<_> = self
             .input_primitives
             .iter()
-	// project the primitives into clip space
+            // project the primitives into clip space
             .map(|p| self.proj_prim(p))
-	// (conservatively) cull the primitives that are
-	// completely outside of the render region.
+            // (conservatively) cull the primitives that are
+            // completely outside of the render region.
             .filter(|p| !self.is_prim_culled(p))
             .collect();
 
-        let mut prim_heap: BinaryHeap<ZsortPrim> = culled
-            .iter()
-            .map(|p| p.clone().into())
-            .collect();
+        let mut prim_heap: BinaryHeap<ZsortPrim> =
+            culled.iter().map(|p| p.clone().into()).collect();
 
-	// Tentatively rendered primitives (that might be later rejected.
-	let mut rendered_prims = vec![];
+        // Tentatively rendered primitives (that might be later rejected.
+        let mut rendered_prims = vec![];
 
         'prim_loop: while let Some(mut x) = prim_heap.pop() {
             let prim = &mut x.p;
             match prim {
                 // TODO: For now, points and lines are rendered unconditionally.
                 Primitive::Point { .. } => {
-		    rendered_prims.push(x);
+                    rendered_prims.push(x);
                 }
                 Primitive::Line { .. } => {
-		    rendered_prims.push(x);
+                    rendered_prims.push(x);
                 }
                 Primitive::Triangle { ref mut tri } => {
                     // Remove denegerate and counter-clockwise triangles
@@ -175,49 +178,51 @@ impl Renderer {
                     }
 
                     // Go through every previously-rendered triangle, and try to intersect it with
-		    // every line segment (implied from previous triangles).
+                    // every line segment (implied from previous triangles).
                     for zp in &rendered_prims {
-			if let Primitive::Triangle { tri: test_tri } = &zp.p {
-			    // ignore hidden triangles
-			    if test_tri.is_hidden() {
-				continue;
-			    }
-			    for i in 0..3 {
+                        if let Primitive::Triangle { tri: test_tri } = &zp.p {
+                            // ignore hidden triangles
+                            if test_tri.is_hidden() {
+                                continue;
+                            }
+                            for i in 0..3 {
+                                println!(
+                                    "Testing triangle {} against ({} {}):",
+                                    tri.na_dbg(),
+                                    test_tri.p[i].xy().na_dbg(),
+                                    test_tri.p[(i + 1) % 3].xy().na_dbg()
+                                );
 
-				println!("Testing triangle {} against ({} {}):",
-					 tri.na_dbg(), 
-					 test_tri.p[i].xy().na_dbg(), 
-					 test_tri.p[(i+1)%3].xy().na_dbg());
-				
-				// try to split the triangle on the line
-				if let SplitResult::Split(tris) =
-				    split_triangle_by_segment(&tri, test_tri.p[i].xy(), test_tri.p[(i+1)%3].xy())
-				{
-				     println!("Splitting into {}:", tris.len());
+                                // try to split the triangle on the line
+                                if let SplitResult::Split(tris) = split_triangle_by_segment(
+                                    &tri,
+                                    test_tri.p[i].xy(),
+                                    test_tri.p[(i + 1) % 3].xy(),
+                                ) {
+                                    println!("Splitting into {}:", tris.len());
 
-				    for t in tris {
-					println!("    {}", t.na_dbg());
-					prim_heap.push(Primitive::Triangle { tri: t }.into())
-				    }
-				    continue 'prim_loop;
-				}
-			    }
+                                    for t in tris {
+                                        println!("    {}", t.na_dbg());
+                                        prim_heap.push(Primitive::Triangle { tri: t }.into())
+                                    }
+                                    continue 'prim_loop;
+                                }
+                            }
 
-			    // Check if the new triangle is contained
-			    // within the current triangle.
-			    if triangle_in_triangle_2d(&tri, &test_tri) {
-				// For now, we assume that the new tri is behind.
-				tri.hide(); 
-			    }
+                            // Check if the new triangle is contained
+                            // within the current triangle.
+                            if triangle_in_triangle_2d(&tri, &test_tri) {
+                                // For now, we assume that the new tri is behind.
+                                tri.hide();
+                            }
+                        }
+                    }
 
-			}
-		    }
-
-		    // Here, we can tentatively render the
-		    // primitive. (We might reject it later.)
-		    rendered_prims.push(x);
+                    // Here, we can tentatively render the
+                    // primitive. (We might reject it later.)
+                    rendered_prims.push(x);
                 }
-	    }
+            }
         }
 
         rendered_prims.iter().collect()

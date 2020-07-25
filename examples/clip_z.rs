@@ -1,6 +1,6 @@
 use nalgebra_glm as glm;
-use vectorfoil::primitive::Tri;
 use vectorfoil::intersect::split_triangle_by_segment;
+use vectorfoil::primitive::Tri;
 
 use vectorfoil::EdgeType;
 

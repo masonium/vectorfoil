@@ -6,12 +6,14 @@ use crate::primitive::*;
 use crate::render_paths::RenderPaths;
 use itertools::Itertools;
 use std::collections::binary_heap::BinaryHeap;
-//use nalgebra_glm as glm;
 
 pub struct Renderer {
     clip: Matrix4<f64>,
     input_primitives: Vec<Primitive>,
     depth_range: [f64; 2],
+    cull_mode: CullMode,
+    show_hidden: bool,
+    debug: bool,
 }
 
 trait VDebug {
@@ -39,12 +41,28 @@ impl VDebug for Tri {
     }
 }
 
+/// Determine how clockwise-wound triangles should be handled.
+#[derive(Debug, Clone, Copy)]
+pub enum CullMode {
+    /// Reverse the order, to render as a normal triangle.
+    Keep,
+
+    /// Mark the triangle as culled, put pass them through,
+    MarkCulled,
+
+    /// Discard the triangle entirely.
+    Discard,
+}
+
 impl Renderer {
     pub fn new(c: &Matrix4<f64>) -> Renderer {
         Renderer {
             clip: *c,
             input_primitives: vec![],
             depth_range: [-1.0, 1.0],
+            cull_mode: CullMode::MarkCulled,
+	    show_hidden: false,
+            debug: false,
         }
     }
 
@@ -59,7 +77,9 @@ impl Renderer {
     }
 
     pub fn add_line(&mut self, p0: DVec3, p1: DVec3) {
-        self.add_prim(Primitive::Line { points: [p0.push(1.0), p1.push(1.0)] });
+        self.add_prim(Primitive::Line {
+            points: [p0.push(1.0), p1.push(1.0)],
+        });
     }
 
     /// Add a triangle to the renderer, with all visible edges.
@@ -157,13 +177,14 @@ impl Renderer {
             // completely outside of the render region.
             .filter(|p| !self.is_prim_culled(p))
             .filter_map(|p| {
-                if let Primitive::Triangle { mut tri } = p.clone() {
+                if let Primitive::Triangle { tri } = p.clone() {
                     let winding = tri.winding_2d();
                     match winding {
-                        Winding::Clockwise => {
-                            tri.reverse();
-                            Some(Primitive::Triangle { tri })
-                        }
+                        Winding::Clockwise => match self.cull_mode {
+                            CullMode::Keep => Some(Primitive::Triangle { tri: tri.reverse() }),
+                            CullMode::MarkCulled => Some(Primitive::Triangle { tri: tri.cull() }),
+                            CullMode::Discard => None,
+                        },
                         Winding::Degenerate => None,
                         _ => Some(p),
                     }
@@ -180,15 +201,17 @@ impl Renderer {
         let mut rendered_prims = vec![];
 
         let mut iter = 0;
-        render_partial(
-            None,
-            &rendered_prims,
-            &prim_heap,
-            None,
-            None,
-            &mut iter,
-            false,
-        );
+        if self.debug {
+            render_partial(
+                None,
+                &rendered_prims,
+                &prim_heap,
+                None,
+                None,
+                &mut iter,
+                false,
+            );
+        }
 
         'prim_loop: while let Some(mut x) = prim_heap.pop() {
             let prim = &x.p;
@@ -203,19 +226,25 @@ impl Renderer {
                     rendered_prims.push(x);
                 }
                 Primitive::Triangle { ref tri } => {
+                    // Ditch any degenerate triangles.
                     if tri.winding_2d() == Winding::Degenerate {
                         continue;
                     }
-
-                    render_partial(
-                        &*tri,
-                        &rendered_prims,
-                        &prim_heap,
-                        None,
-                        None,
-                        &mut iter,
-                        false,
-                    );
+                    // Ditch hidden triangles (though there shouldn't be any).
+                    if tri.is_hidden() {
+                        continue;
+                    }
+                    if self.debug {
+                        render_partial(
+                            &*tri,
+                            &rendered_prims,
+                            &prim_heap,
+                            None,
+                            None,
+                            &mut iter,
+                            false,
+                        );
+                    }
 
                     // Go through every previously-rendered triangle, and try to intersect it with
                     // every line segment (implied from previous triangles).
@@ -228,39 +257,31 @@ impl Renderer {
 
                             for i in 0..3 {
                                 if x.already_checked(izp, i) {
-                                    println!("{} skipping ({} {})", iter, izp, i);
                                     continue;
                                 }
 
                                 let pa = test_tri.p[i].xy();
                                 let pb = test_tri.p[(i + 1) % 3].xy();
-                                println!(
-                                    "{} Testing triangle {} against ({} {}):",
-                                    iter,
-                                    tri.na_dbg(),
-                                    pa.na_dbg(),
-                                    pb.na_dbg()
-                                );
 
                                 // try to split the triangle on the line
                                 if let SplitResult::Split(tris) =
                                     split_triangle_by_segment(&tri, pa, pb)
                                 {
-                                    println!("{} Splitting into {}:", iter, tris.len());
-                                    render_partial(
-                                        None,
-                                        &rendered_prims,
-                                        &prim_heap,
-                                        (&tris, (pa, pb)),
-                                        None,
-                                        &mut iter,
-                                        added,
-                                    );
+                                    if self.debug {
+                                        render_partial(
+                                            None,
+                                            &rendered_prims,
+                                            &prim_heap,
+                                            (&tris, (pa, pb)),
+                                            None,
+                                            &mut iter,
+                                            added,
+                                        );
+                                    }
 
                                     let mut new_hs = x.presplit.clone();
                                     new_hs.insert((izp, i));
                                     for t in tris {
-                                        println!("{}    {}", iter, t.na_dbg());
                                         prim_heap.push(ZsortPrim::new(
                                             Primitive::Triangle { tri: t },
                                             &new_hs,
@@ -272,55 +293,51 @@ impl Renderer {
 
                             // Check if the new triangle is contained
                             // within the current triangle.
-                            println!(
-                                "{} Testing triangle {} inside {}",
-                                iter,
-                                tri.na_dbg(),
-                                test_tri.na_dbg()
-                            );
                             if triangle_in_triangle_2d(&tri, &test_tri) {
                                 // For now, we assume that the new tri is behind.
-                                println!(
-                                    "{} Hiding triangle {} inside {}",
-                                    iter,
-                                    tri.na_dbg(),
-                                    test_tri.na_dbg()
-                                );
                                 hidden = true;
-                                render_partial(
-                                    None,
-                                    &rendered_prims,
-                                    &prim_heap,
-                                    None,
-                                    &*tri,
-                                    &mut iter,
-                                    added,
-                                );
+                                if self.debug {
+                                    render_partial(
+                                        None,
+                                        &rendered_prims,
+                                        &prim_heap,
+                                        None,
+                                        &*tri,
+                                        &mut iter,
+                                        added,
+                                    );
+                                }
                                 break;
                             }
                         }
                     }
 
-                    if hidden {
-                        x.p.hide();
-                    }
-
                     // Here, we can tentatively render the
                     // primitive. (We might reject it later.)
-                    rendered_prims.push(x);
-                    added = true;
+		    if hidden {
+			if self.show_hidden {
+                            x.p.hide();
+			    rendered_prims.push(x);
+			    added = true;
+			}
+		    } else {
+			rendered_prims.push(x);
+			added = true;
+		    }
+
                 }
             }
-
-            render_partial(
-                None,
-                &rendered_prims,
-                &prim_heap,
-                None,
-                None,
-                &mut iter,
-                added,
-            );
+            if self.debug {
+                render_partial(
+                    None,
+                    &rendered_prims,
+                    &prim_heap,
+                    None,
+                    None,
+                    &mut iter,
+                    added,
+                );
+            }
         }
 
         rendered_prims.iter().collect()

@@ -52,9 +52,22 @@ impl Tri {
     }
 
     /// Reverse the ordering of the vertices and edges
-    pub fn reverse(&mut self) {
+    pub fn reverse(mut self) -> Tri {
 	self.p.swap(1, 2);
 	self.e.swap(0, 2);
+	self
+    }
+
+    /// Mark all edges as culled.
+    pub fn cull(self) -> Tri {
+	Tri {
+	    p: self.p,
+	    e: [EdgeType::Culled; 3],
+	}
+    }
+
+    pub fn is_culled(&self) -> bool {
+	self.e.iter().all(|x| *x == EdgeType::Culled)
     }
 }
 

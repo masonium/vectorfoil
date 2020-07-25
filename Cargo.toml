@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 nalgebra = "*"
 nalgebra-glm = "*"
-ncollide2d = "*"
 art-util = { path = "/home/mason/workspace/art-util" }
 svg = "*"
 itertools = "*"

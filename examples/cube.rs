@@ -1,6 +1,6 @@
 use glm::{look_at, perspective, vec3};
 use nalgebra_glm as glm;
-use vectorfoil::Renderer;
+use vectorfoil::{Renderer, SvgOptions};
 
 fn main() -> std::io::Result<()> {
     let dpi = 72.0;
@@ -42,7 +42,7 @@ fn main() -> std::io::Result<()> {
         vec3(1.0, -1.0, -1.0),
     ]);
 
-    // // left
+    // left
     renderer.add_polygon(&[
         vec3(-1.0, -1.0, -1.0),
         vec3(-1.0, -1.0, 1.0),
@@ -50,13 +50,16 @@ fn main() -> std::io::Result<()> {
         vec3(-1.0, 1.0, -1.0),
     ]);
 
-    // // top
-    renderer.add_polygon(&[
-        vec3(1.0, 1.0, -1.0),
-        vec3(-1.0, 1.0, -1.0),
-        vec3(-1.0, 1.0, 1.0),
-        vec3(1.0, 1.0, 1.0),
-    ]);
+    // top
+    for f in 0..=5 {
+	let y = 1.0 + 0.8 * (f as f64) / 5.0;
+	renderer.add_polygon(&[
+            vec3(1.0, y, -1.0),
+            vec3(-1.0, y, -1.0),
+            vec3(-1.0, y, 1.0),
+            vec3(1.0, y, 1.0),
+	]);
+    }
 
     // bottom
     renderer.add_polygon(&[
@@ -67,7 +70,9 @@ fn main() -> std::io::Result<()> {
     ]);
 
     let rp = renderer.render();
-    let d = vectorfoil::render_paths::standalone_svg(&rp, width, height, dpi);
+    let opt = SvgOptions { width: width * dpi, height: height * dpi, by_layer: true };
+
+    let d = rp.visible_only().as_standalone_svg(&opt);
 
     svg::save("cube.svg", &d)
 }

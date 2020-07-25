@@ -60,7 +60,7 @@ impl Renderer {
             clip: *c,
             input_primitives: vec![],
             depth_range: [-1.0, 1.0],
-            cull_mode: CullMode::MarkCulled,
+            cull_mode: CullMode::Discard,
             show_hidden: false,
             debug: false,
         }

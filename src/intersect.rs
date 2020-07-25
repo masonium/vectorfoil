@@ -86,7 +86,7 @@ pub fn is_degen_tri(p0: DVec2, p1: DVec2, p2: DVec2) -> bool {
     let l12 = p12.norm();
 
     if l01 <= LINE_LENGTH_EPS || l12 <= LINE_LENGTH_EPS {
-	return true;
+        return true;
     }
 
     let signed_area = p01.x * p12.y - p01.y * p12.x;
@@ -196,7 +196,7 @@ fn on_line_range(t: f64) -> bool {
 pub enum SplitResult<'a> {
     Original(&'a Tri),
     Split(Vec<Tri>),
-    Degen
+    Degen,
 }
 
 impl<'a> From<&'a Tri> for SplitResult<'a> {
@@ -217,12 +217,12 @@ impl<'a> From<Vec<Tri>> for SplitResult<'a> {
 /// It is assumed within this function that p0-p1 is 'on top' of
 /// `tri`. Degenerate triangles will yield unknown results.
 pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult {
-//     println!("let v = [vec4({}, {}, 0.0, 1.0), vec4({},{}, 0.0, 1.0), vec4({},{},0.0,1.0)];
-// let p0 = vec2({}, {});
-// let p1 = vec2({}, {});", tri.p[0].x, tri.p[0].y,
-// 	     tri.p[1].x, tri.p[1].y,
-// 	     tri.p[2].x, tri.p[2].y,
-//     p0.x, p0.y, p1.x, p1.y);
+    //     println!("let v = [vec4({}, {}, 0.0, 1.0), vec4({},{}, 0.0, 1.0), vec4({},{},0.0,1.0)];
+    // let p0 = vec2({}, {});
+    // let p1 = vec2({}, {});", tri.p[0].x, tri.p[0].y,
+    // 	     tri.p[1].x, tri.p[1].y,
+    // 	     tri.p[2].x, tri.p[2].y,
+    //     p0.x, p0.y, p1.x, p1.y);
 
     let i0 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[0].xy(), tri.p[1].xy());
     let i1 = implicit_ray_intersect_2d(p0.xy(), p1.xy(), tri.p[1].xy(), tri.p[2].xy());
@@ -271,29 +271,33 @@ pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult
     	    .expect("An interior line segment should have at least one positive intersection with a triangle edge.");
             split_triangle_aux(tri, edge_isect.0, &isects).into()
         }
-        (PointTriTest::On(e), PointTriTest::Inside(_)) => split_triangle_aux(tri, e, &isects).into(),
+        (PointTriTest::On(e), PointTriTest::Inside(_)) => {
+            split_triangle_aux(tri, e, &isects).into()
+        }
         (PointTriTest::On(e), PointTriTest::On(e1)) => {
-	    if e == e1 {
-		tri.into()
-	    } else {
-		if let RayInt::Intersection(_, _) = isects[e] {
-		    split_triangle_aux(tri, e, &isects).into()
-		} else {
-		    split_triangle_aux(tri, e1, &isects).into()
-		}
-	    }
-	},
+            if e == e1 {
+                tri.into()
+            } else {
+                if let RayInt::Intersection(_, _) = isects[e] {
+                    split_triangle_aux(tri, e, &isects).into()
+                } else {
+                    split_triangle_aux(tri, e1, &isects).into()
+                }
+            }
+        }
         (PointTriTest::Inside(_), PointTriTest::On(e)) => {
             split_triangle_aux(tri, e, &isects).into()
         }
         (PointTriTest::Outside, PointTriTest::On(_))
         | (PointTriTest::On(_), PointTriTest::Outside) => tri.into(),
         _ => {
-	    if is_degen_tri(tri.p[0].xy(), tri.p[1].xy(), tri.p[2].xy()) {
-		SplitResult::Degen
-	    } else {
-		panic!("Inside/outside should be the only remaining case, and that should be covered.")
-	    }
+            if is_degen_tri(tri.p[0].xy(), tri.p[1].xy(), tri.p[2].xy()) {
+                SplitResult::Degen
+            } else {
+                panic!(
+                    "Inside/outside should be the only remaining case, and that should be covered."
+                )
+            }
         }
     }
 }
@@ -312,12 +316,12 @@ fn split_triangle_aux(tri: &Tri, e: usize, isects: &[RayInt]) -> Vec<Tri> {
     // find the interpolate point on the edge.
     let e1 = (e + 1) % 3;
     let e2 = (e + 2) % 3;
-    let p = match isects[e].t2(){
-	Some(t2) => perspective_lerp(t2, tri.p[e], tri.p[e1]),
-	_ => {
-	    dbg!(tri, e, isects);
-	    panic!("split_triangle_aux failure: expected t2 where there was none.");
-	}
+    let p = match isects[e].t2() {
+        Some(t2) => perspective_lerp(t2, tri.p[e], tri.p[e1]),
+        _ => {
+            dbg!(tri, e, isects);
+            panic!("split_triangle_aux failure: expected t2 where there was none.");
+        }
     };
 
     //

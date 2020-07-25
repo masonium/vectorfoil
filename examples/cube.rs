@@ -23,12 +23,8 @@ fn main() -> std::io::Result<()> {
         vec3(1.0, -1.0, 1.0),
     ]);
     for i in 1..=5 {
-	let z = 1.0 + i as f64 * 0.2;
-	renderer.add_polygon(&[
-            vec3(1.0, 1.0, z),
-            vec3(-1.0, 1.0, z),
-            vec3(-1.0, -1.0, z),
-	]);
+        let z = 1.0 + i as f64 * 0.2;
+        renderer.add_polygon(&[vec3(1.0, 1.0, z), vec3(-1.0, 1.0, z), vec3(-1.0, -1.0, z)]);
     }
     // back
     renderer.add_polygon(&[

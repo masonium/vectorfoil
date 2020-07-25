@@ -61,7 +61,7 @@ impl Renderer {
             input_primitives: vec![],
             depth_range: [-1.0, 1.0],
             cull_mode: CullMode::MarkCulled,
-	    show_hidden: false,
+            show_hidden: false,
             debug: false,
         }
     }
@@ -314,17 +314,16 @@ impl Renderer {
 
                     // Here, we can tentatively render the
                     // primitive. (We might reject it later.)
-		    if hidden {
-			if self.show_hidden {
+                    if hidden {
+                        if self.show_hidden {
                             x.p.hide();
-			    rendered_prims.push(x);
-			    added = true;
-			}
-		    } else {
-			rendered_prims.push(x);
-			added = true;
-		    }
-
+                            rendered_prims.push(x);
+                            added = true;
+                        }
+                    } else {
+                        rendered_prims.push(x);
+                        added = true;
+                    }
                 }
             }
             if self.debug {

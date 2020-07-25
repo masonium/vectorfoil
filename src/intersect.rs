@@ -305,8 +305,8 @@ pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult
 /// Assumes p{0, 1} are of the form (x/w, y/w, z/w, w) and computes
 /// the interpolation along p0 -> p1 such that w fits.
 fn perspective_lerp(t: f64, p0: DVec4, p1: DVec4) -> DVec4 {
-    let p = art_util::easing::lerp(t, p0.xyz(), p1.xyz());
-    let w = p0.w * p1.w / art_util::easing::lerp(t, p1.w, p0.w); // note the reversal; w(0) = p0.w
+    let p = (1.0 - t) * p0.xyz() + t * p1.xyz();
+    let w = p0.w * p1.w / ((1.0 - t) * p1.w + t * p0.w); // note the reversal; w(0) = p0.w
     vec4(p.x, p.y, p.z, w)
 }
 

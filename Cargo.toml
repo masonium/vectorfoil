@@ -11,6 +11,7 @@ nalgebra = "*"
 nalgebra-glm = "*"
 svg = "*"
 itertools = "*"
+num-traits = "*"
 
 [dev-dependencies]
 assert_approx_eq = "*"

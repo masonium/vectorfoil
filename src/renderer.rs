@@ -65,6 +65,10 @@ impl Renderer {
             debug: false,
         }
     }
+    pub fn new_f32(c: &Matrix4<f32>) -> Renderer {
+	let clip64 = glm::DMat4::from_vec(c.as_slice().iter().map(|x| *x as f64).collect());
+	Renderer::new(&clip64)
+    }
 
     /// add a primitive to the render list
     pub fn add_prim(&mut self, p: Primitive) {
@@ -113,6 +117,31 @@ impl Renderer {
             self.add_prim(Primitive::Triangle {
                 tri: Tri {
                     p: [p[0].push(1.0), p[i + 1].push(1.0), p[i + 2].push(1.0)],
+                    e: [e0, EdgeType::Visible, e2],
+                },
+            });
+        }
+    }
+
+    /// Similar to add_polygon, but for `Vec3`s instead of `DVec3`s.
+    pub fn add_polygon_f32(&mut self, p: &[Vec3]) {
+        for i in 0..p.len() - 2 {
+            let e0 = if i == 0 {
+                EdgeType::Visible
+            } else {
+                EdgeType::Invisible
+            };
+            let e2 = if i == p.len() - 3 {
+                EdgeType::Visible
+            } else {
+                EdgeType::Invisible
+            };
+	    let p0 = vec4(p[0].x as f64, p[0].y as f64, p[0].z as f64, 1.0);
+	    let p1 = vec4(p[i + 1].x as f64, p[i + 1].y as f64, p[i + 1].z as f64, 1.0);
+	    let p2 = vec4(p[i + 2].x as f64, p[i + 2].y as f64, p[i + 2].z as f64, 1.0);
+            self.add_prim(Primitive::Triangle {
+                tri: Tri {
+                    p: [p0, p1, p2],
                     e: [e0, EdgeType::Visible, e2],
                 },
             });

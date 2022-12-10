@@ -13,14 +13,14 @@ fn basic_benchmark(c: &mut Criterion) {
     let mut renderer = Renderer::new(&(proj * view));
 
     renderer.add_triangle(
-        &vec3(-1.0, -1.0, 1.0),
-        &vec3(0.5, 0.0, 1.0),
-        &vec3(-1.0, 1.0, 1.0),
+        vec3(-1.0, -1.0, 1.0),
+        vec3(0.5, 0.0, 1.0),
+        vec3(-1.0, 1.0, 1.0),
     );
     renderer.add_triangle(
-        &vec3(-0.5, 0.0, -1.0),
-        &vec3(1.0, -1.0, -1.0),
-        &vec3(1.0, 1.0, -1.0),
+        vec3(-0.5, 0.0, -1.0),
+        vec3(1.0, -1.0, -1.0),
+        vec3(1.0, 1.0, -1.0),
     );
 
     c.bench_function("two triangle", |b| b.iter(|| black_box(&renderer).render()));

@@ -217,7 +217,7 @@ impl<'a> From<Vec<Tri>> for SplitResult<'a> {
 /// It is assumed within this function that p0-p1 is 'on top' of
 /// `tri`. Degenerate triangles will yield unknown results.
 pub fn split_triangle_by_segment(tri: &Tri, p0: DVec2, p1: DVec2) -> SplitResult {
-    //     println!("let v = [vec4({}, {}, 0.0, 1.0), vec4({},{}, 0.0, 1.0), vec4({},{},0.0,1.0)];
+    // println!("let v = [vec4({}, {}, 0.0, 1.0), vec4({},{}, 0.0, 1.0), vec4({},{},0.0,1.0)];
     // let p0 = vec2({}, {});
     // let p1 = vec2({}, {});", tri.p[0].x, tri.p[0].y,
     // 	     tri.p[1].x, tri.p[1].y,
